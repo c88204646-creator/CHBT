@@ -147,7 +147,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const session = await storage.createWhatsappSession({
         userId: req.user!.userId,
         status: "connecting",
-        phoneNumber: deviceName || null,
+        deviceName: deviceName || null,
+        phoneNumber: null,
       });
 
       // Start WhatsApp session in background (don't wait for QR)

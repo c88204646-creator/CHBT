@@ -36,6 +36,7 @@ export type LoginCredentials = z.infer<typeof loginSchema>;
 export const whatsappSessions = pgTable("whatsapp_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  deviceName: text("device_name"),
   phoneNumber: text("phone_number"),
   status: text("status").notNull().default("disconnected"), // disconnected, connecting, connected
   qrCode: text("qr_code"),

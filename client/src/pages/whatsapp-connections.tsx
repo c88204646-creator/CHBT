@@ -200,7 +200,7 @@ export default function WhatsAppConnectionsPage() {
                     </div>
                     <div>
                       <CardTitle className="text-base">
-                        {session.phoneNumber || "Pending"}
+                        {session.phoneNumber || session.deviceName || "Pending"}
                       </CardTitle>
                       <CardDescription className="text-xs mt-1">
                         {getStatusBadge(session.status)}
