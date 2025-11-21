@@ -138,6 +138,7 @@ export default function WhatsAppConnectionsPage() {
         <Button
           onClick={() => {
             setDeviceName("");
+            setAccountType("normal");
             setShowDeviceNameDialog(true);
           }}
           disabled={createSessionMutation.isPending}
