@@ -197,13 +197,44 @@ class WhatsAppManager {
   async disconnectSession(sessionId: string): Promise<void> {
     const connection = this.connections.get(sessionId);
     if (connection?.sock) {
-      await connection.sock.logout();
+      try {
+        // Logout from WhatsApp first
+        console.log("[DISCONNECT] Logging out session:", sessionId);
+        await connection.sock.logout();
+      } catch (error) {
+        console.error("[DISCONNECT] Error during logout:", error);
+      }
+      
+      try {
+        // End the socket connection completely
+        console.log("[DISCONNECT] Closing socket for session:", sessionId);
+        connection.sock.end(undefined);
+      } catch (error) {
+        console.error("[DISCONNECT] Error closing socket:", error);
+      }
     }
+    
+    // Update database to mark as disconnected
+    try {
+      await storage.updateWhatsappSession(sessionId, {
+        status: "disconnected",
+      });
+    } catch (error) {
+      console.error("[DISCONNECT] Error updating session status:", error);
+    }
+    
+    // Remove from memory
     this.connections.delete(sessionId);
 
+    // Clean up auth files
     const sessionPath = path.join(this.authDir, sessionId);
     if (fs.existsSync(sessionPath)) {
-      fs.rmSync(sessionPath, { recursive: true, force: true });
+      try {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log("[DISCONNECT] Cleaned up auth files for session:", sessionId);
+      } catch (error) {
+        console.error("[DISCONNECT] Error cleaning up auth files:", error);
+      }
     }
   }
 
