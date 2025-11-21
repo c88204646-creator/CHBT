@@ -38,6 +38,7 @@ export const whatsappSessions = pgTable("whatsapp_sessions", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   deviceName: text("device_name"),
   phoneNumber: text("phone_number"),
+  accountType: text("account_type").notNull().default("normal"), // normal, business
   status: text("status").notNull().default("disconnected"), // disconnected, connecting, connected
   qrCode: text("qr_code"),
   sessionData: text("session_data"),

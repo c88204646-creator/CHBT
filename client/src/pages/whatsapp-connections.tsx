@@ -10,6 +10,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Smartphone, Plus, QrCode, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { WhatsappSession } from "@shared/schema";
 
 export default function WhatsAppConnectionsPage() {
@@ -17,6 +24,7 @@ export default function WhatsAppConnectionsPage() {
   const [showDeviceNameDialog, setShowDeviceNameDialog] = useState(false);
   const [showQRDialog, setShowQRDialog] = useState(false);
   const [deviceName, setDeviceName] = useState("");
+  const [accountType, setAccountType] = useState("normal");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [autoDeleteTimeout, setAutoDeleteTimeout] = useState<NodeJS.Timeout | null>(null);
 
@@ -32,8 +40,8 @@ export default function WhatsAppConnectionsPage() {
 
 
   const createSessionMutation = useMutation({
-    mutationFn: async (name: string) => {
-      const response = await apiRequest("POST", "/api/whatsapp/sessions", { deviceName: name });
+    mutationFn: async ({ name, type }: { name: string; type: string }) => {
+      const response = await apiRequest("POST", "/api/whatsapp/sessions", { deviceName: name, accountType: type });
       return await response.json() as WhatsappSession;
     },
     onSuccess: (session: WhatsappSession) => {

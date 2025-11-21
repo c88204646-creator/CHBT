@@ -29,7 +29,7 @@ class WhatsAppManager {
     }
   }
 
-  async createSession(sessionId: string, userId: string): Promise<void> {
+  async createSession(sessionId: string, userId: string, accountType: string = "normal"): Promise<void> {
     try {
       const sessionPath = path.join(this.authDir, sessionId);
       

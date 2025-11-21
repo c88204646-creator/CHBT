@@ -142,17 +142,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/whatsapp/sessions", requireAuth, async (req, res) => {
     try {
-      const { deviceName } = req.body;
+      const { deviceName, accountType } = req.body;
       
       const session = await storage.createWhatsappSession({
         userId: req.user!.userId,
         status: "connecting",
         deviceName: deviceName || null,
+        accountType: accountType || "normal",
         phoneNumber: null,
       });
 
       // Start WhatsApp session in background (don't wait for QR)
-      whatsappManager.createSession(session.id, req.user!.userId).catch(err => {
+      whatsappManager.createSession(session.id, req.user!.userId, accountType || "normal").catch(err => {
         console.error("Background session creation error:", err);
       });
 
