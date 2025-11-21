@@ -147,7 +147,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "connecting",
       });
 
+      // Wait for QR code to be generated (up to 30 seconds)
       await whatsappManager.createSession(session.id, req.user!.userId);
+
+      // Small delay to ensure DB is updated with QR code
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       const updatedSession = await storage.getWhatsappSession(session.id);
       res.json(updatedSession);
