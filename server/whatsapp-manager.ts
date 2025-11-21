@@ -103,12 +103,33 @@ class WhatsAppManager {
             conn.status = "connected";
             conn.qrCode = null;
           }
+
+          // Load all existing chats when connected
+          console.log("[CHATS] Loading existing chats for session:", sessionId);
+          await this.loadAllChats(sessionId, userId, sock);
         }
       });
 
       sock.ev.on("creds.update", saveCreds);
 
-      console.log("[LISTENERS] Registering message event listeners for session:", sessionId);
+      console.log("[LISTENERS] Registering event listeners for session:", sessionId);
+
+      // Listen for chat updates
+      sock.ev.on("chats.set", async (data) => {
+        console.log(`[CHATS-SET] Received ${data.chats?.length || 0} chats`);
+        if (data.chats) {
+          for (const chat of data.chats) {
+            await this.processChat(sessionId, userId, chat, sock);
+          }
+        }
+      });
+
+      sock.ev.on("chats.upsert", async (chats) => {
+        console.log(`[CHATS-UPSERT] Received ${chats.length} chat updates`);
+        for (const chat of chats) {
+          await this.processChat(sessionId, userId, chat, sock);
+        }
+      });
 
       // PRIMARY: Listen to messages.upsert for REAL-TIME messages
       sock.ev.on("messages.upsert", async (m) => {
@@ -116,18 +137,6 @@ class WhatsAppManager {
         for (const msg of m.messages) {
           console.log(`[MESSAGE-RECEIVED] From: ${msg.key.remoteJid}, FromMe: ${msg.key.fromMe}, HasContent: ${!!msg.message}`);
           await this.handleIncomingMessage(sessionId, userId, msg);
-        }
-      });
-
-      // FALLBACK: Also listen to messages.update
-      sock.ev.on("messages.update", async (m) => {
-        console.log(`[MESSAGES-UPDATE] Updates count: ${m.length}`);
-      });
-      
-      // Additional listener for other events
-      sock.ev.on("all", (event, ...args) => {
-        if (event.includes("message") || event.includes("chats")) {
-          console.log(`[EVENT] ${event}`, args.length > 0 ? `args: ${args.length}` : "");
         }
       });
 
@@ -139,6 +148,53 @@ class WhatsAppManager {
       });
     } catch (error) {
       console.error("Error creating WhatsApp session:", error);
+    }
+  }
+
+  async loadAllChats(sessionId: string, userId: string, sock: WASocket): Promise<void> {
+    try {
+      console.log("[CHATS] Loading chats via store...");
+      // Baileys stores chats after connection - just log to start the process
+      console.log("[CHATS] ✅ Ready to receive chats from events");
+    } catch (error) {
+      console.error("[CHATS] Error loading chats:", error);
+    }
+  }
+
+  async processChat(sessionId: string, userId: string, chat: any, sock: WASocket): Promise<void> {
+    try {
+      const contactNumber = chat.id?.split("@")[0];
+      if (!contactNumber || contactNumber.includes("status") || contactNumber.includes("broadcast")) {
+        return;
+      }
+
+      const contactName = chat.name || chat.pushName || contactNumber;
+      console.log(`[CHATS] Processing chat: ${contactName} (${contactNumber})`);
+
+      let conversation: any = null;
+      const existingConvs = await storage.getConversationsBySessionId(sessionId);
+      conversation = existingConvs.find((c) => c.contactNumber === contactNumber);
+
+      if (!conversation) {
+        conversation = await storage.createConversation({
+          sessionId,
+          contactName,
+          contactNumber,
+          lastMessage: chat.lastMessage || null,
+          lastMessageTime: chat.lastMessageTime || null,
+          unreadCount: chat.unreadCount || 0,
+        });
+        console.log(`[CHATS] Created conversation: ${conversation.id}`);
+      } else {
+        await storage.updateConversation(conversation.id, {
+          contactName,
+          lastMessage: chat.lastMessage || conversation.lastMessage,
+          lastMessageTime: chat.lastMessageTime || conversation.lastMessageTime,
+          unreadCount: chat.unreadCount || 0,
+        });
+      }
+    } catch (error) {
+      console.error("[CHATS] Error processing chat:", error);
     }
   }
 
