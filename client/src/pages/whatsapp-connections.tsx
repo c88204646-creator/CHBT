@@ -301,6 +301,18 @@ export default function WhatsAppConnectionsPage() {
                 autoFocus
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="account-type">Account Type</Label>
+              <Select value={accountType} onValueChange={setAccountType}>
+                <SelectTrigger id="account-type" data-testid="select-account-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">WhatsApp Normal</SelectItem>
+                  <SelectItem value="business">WhatsApp Business</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -311,7 +323,7 @@ export default function WhatsAppConnectionsPage() {
                 Cancel
               </Button>
               <Button
-                onClick={() => createSessionMutation.mutate(deviceName)}
+                onClick={() => createSessionMutation.mutate({ name: deviceName, type: accountType })}
                 disabled={!deviceName.trim() || createSessionMutation.isPending}
                 className="flex-1"
                 data-testid="button-confirm-device-name"
