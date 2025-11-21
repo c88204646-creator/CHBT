@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -12,15 +14,18 @@ import type { WhatsappSession } from "@shared/schema";
 
 export default function WhatsAppConnectionsPage() {
   const { toast } = useToast();
+  const [showDeviceNameDialog, setShowDeviceNameDialog] = useState(false);
   const [showQRDialog, setShowQRDialog] = useState(false);
+  const [deviceName, setDeviceName] = useState("");
   const [selectedSession, setSelectedSession] = useState<WhatsappSession | null>(null);
   const [qrPollingInterval, setQrPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [autoDeleteTimeout, setAutoDeleteTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const { data: sessions, isLoading } = useQuery<WhatsappSession[]>({
     queryKey: ["/api/whatsapp/sessions"],
   });
 
-  // Poll for QR code updates
+  // Poll for QR code and connection status
   const startQRPolling = (session: WhatsappSession) => {
     let pollCount = 0;
     const interval = setInterval(async () => {
@@ -33,21 +38,43 @@ export default function WhatsAppConnectionsPage() {
           const updatedSessions = await response.json();
           const updatedSession = updatedSessions.find((s: WhatsappSession) => s.id === session.id);
           
-          if (updatedSession?.qrCode) {
+          if (!updatedSession) return;
+          
+          // Check if QR is ready
+          if (updatedSession.qrCode) {
             setSelectedSession(updatedSession);
+          }
+          
+          // Check if successfully connected
+          if (updatedSession.status === "connected") {
             clearInterval(interval);
             setQrPollingInterval(null);
-          } else if (pollCount > 60) {
-            // Stop polling after 60 attempts (30 seconds)
-            clearInterval(interval);
-            setQrPollingInterval(null);
+            if (autoDeleteTimeout) clearTimeout(autoDeleteTimeout);
+            setAutoDeleteTimeout(null);
+            setShowQRDialog(false);
             toast({
-              title: "QR Code Timeout",
-              description: "Could not generate QR code. Please try again.",
+              title: "Connected!",
+              description: `WhatsApp session connected to ${updatedSession.phoneNumber}`,
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
+            return;
+          }
+          
+          // Timeout after 120 seconds (QR expires after ~90 seconds in Baileys)
+          if (pollCount > 240) {
+            clearInterval(interval);
+            setQrPollingInterval(null);
+            if (autoDeleteTimeout) clearTimeout(autoDeleteTimeout);
+            setAutoDeleteTimeout(null);
+            setShowQRDialog(false);
+            // Auto-delete the session if not connected
+            await apiRequest("DELETE", `/api/whatsapp/sessions/${session.id}`, {});
+            toast({
+              title: "Connection Timeout",
+              description: "QR code expired. Please try again.",
               variant: "destructive",
             });
-          } else {
-            setSelectedSession(updatedSession || session);
+            queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
           }
         }
       } catch (error) {
@@ -59,11 +86,12 @@ export default function WhatsAppConnectionsPage() {
   };
 
   const createSessionMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", "/api/whatsapp/sessions", {});
+    mutationFn: async (name: string) => {
+      return await apiRequest("POST", "/api/whatsapp/sessions", { deviceName: name });
     },
     onSuccess: (session: WhatsappSession) => {
       setSelectedSession(session);
+      setShowDeviceNameDialog(false);
       setShowQRDialog(true);
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
       startQRPolling(session);
@@ -133,7 +161,10 @@ export default function WhatsAppConnectionsPage() {
           </p>
         </div>
         <Button
-          onClick={() => createSessionMutation.mutate()}
+          onClick={() => {
+            setDeviceName("");
+            setShowDeviceNameDialog(true);
+          }}
           disabled={createSessionMutation.isPending}
           className="gap-2"
           data-testid="button-create-session"
@@ -260,7 +291,10 @@ export default function WhatsAppConnectionsPage() {
               Connect your first WhatsApp account to start managing conversations and chatbots
             </p>
             <Button
-              onClick={() => createSessionMutation.mutate()}
+              onClick={() => {
+                setDeviceName("");
+                setShowDeviceNameDialog(true);
+              }}
               disabled={createSessionMutation.isPending}
               className="gap-2"
               data-testid="button-create-first-session"
@@ -272,11 +306,57 @@ export default function WhatsAppConnectionsPage() {
         </Card>
       )}
 
+      <Dialog open={showDeviceNameDialog} onOpenChange={setShowDeviceNameDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Connect WhatsApp Account</DialogTitle>
+            <DialogDescription>
+              Enter a name for this WhatsApp device connection
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="device-name">Device Name</Label>
+              <Input
+                id="device-name"
+                placeholder="e.g., Business Account, Support Team"
+                value={deviceName}
+                onChange={(e) => setDeviceName(e.target.value)}
+                data-testid="input-device-name"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeviceNameDialog(false)}
+                className="flex-1"
+                data-testid="button-cancel-device-name"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => createSessionMutation.mutate(deviceName)}
+                disabled={!deviceName.trim() || createSessionMutation.isPending}
+                className="flex-1"
+                data-testid="button-confirm-device-name"
+              >
+                {createSessionMutation.isPending ? "Creating..." : "Next"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showQRDialog} onOpenChange={(open) => {
         setShowQRDialog(open);
         if (!open && qrPollingInterval) {
           clearInterval(qrPollingInterval);
           setQrPollingInterval(null);
+        }
+        if (!open && autoDeleteTimeout) {
+          clearTimeout(autoDeleteTimeout);
+          setAutoDeleteTimeout(null);
         }
       }}>
         <DialogContent className="sm:max-w-md">
@@ -302,7 +382,7 @@ export default function WhatsAppConnectionsPage() {
               </div>
             )}
             <p className="text-sm text-muted-foreground mt-4 text-center">
-              QR code will refresh automatically if not scanned
+              Waiting for you to scan the QR code...
             </p>
           </div>
         </DialogContent>
