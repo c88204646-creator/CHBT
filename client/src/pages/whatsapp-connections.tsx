@@ -37,10 +37,21 @@ export default function WhatsAppConnectionsPage() {
       return await response.json() as WhatsappSession;
     },
     onSuccess: (session: WhatsappSession) => {
-      setSelectedSessionId(session.id);
       setShowDeviceNameDialog(false);
-      setShowQRDialog(true);
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
+      
+      // Show toast with action to view QR
+      toast({
+        title: "WhatsApp Session Created",
+        description: `Device "${session.deviceName}" is ready. Scan the QR code to connect.`,
+        action: {
+          label: "View QR",
+          onClick: () => {
+            setSelectedSessionId(session.id);
+            setShowQRDialog(true);
+          },
+        },
+      });
     },
     onError: (error: any) => {
       toast({
@@ -51,18 +62,18 @@ export default function WhatsAppConnectionsPage() {
     },
   });
 
-  // Monitor connection status and auto-delete on timeout
+  // Monitor connection status - show alert when connected
   useEffect(() => {
     if (!showQRDialog || !selectedSession) return;
     
     if (selectedSession.status === "connected") {
       setShowQRDialog(false);
       toast({
-        title: "Connected!",
-        description: `WhatsApp session connected to ${selectedSession.phoneNumber}`,
+        title: "Successfully Connected!",
+        description: `Your WhatsApp account (${selectedSession.phoneNumber}) is now linked and ready to use.`,
       });
     }
-  }, [selectedSession?.status, showQRDialog, selectedSession]);
+  }, [selectedSession, showQRDialog, toast]);
 
   const disconnectMutation = useMutation({
     mutationFn: async (sessionId: string) => {
