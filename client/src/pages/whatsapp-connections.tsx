@@ -33,20 +33,28 @@ export default function WhatsAppConnectionsPage() {
       try {
         const response = await fetch(`/api/whatsapp/sessions`, {
           credentials: "include",
+          cache: "no-cache",
         });
         if (response.ok) {
           const updatedSessions = await response.json();
           const updatedSession = updatedSessions.find((s: WhatsappSession) => s.id === session.id);
           
-          if (!updatedSession) return;
+          if (!updatedSession) {
+            console.log("[POLL] Session not found");
+            return;
+          }
+          
+          console.log("[POLL] Updated session status:", updatedSession.status, "hasQR:", !!updatedSession.qrCode);
           
           // Check if QR is ready
           if (updatedSession.qrCode) {
+            console.log("[POLL] QR code found, updating state");
             setSelectedSession(updatedSession);
           }
           
           // Check if successfully connected
           if (updatedSession.status === "connected") {
+            console.log("[POLL] Connection successful!");
             clearInterval(interval);
             setQrPollingInterval(null);
             if (autoDeleteTimeout) clearTimeout(autoDeleteTimeout);
@@ -62,13 +70,19 @@ export default function WhatsAppConnectionsPage() {
           
           // Timeout after 120 seconds (QR expires after ~90 seconds in Baileys)
           if (pollCount > 240) {
+            console.log("[POLL] QR code timeout, deleting session");
             clearInterval(interval);
             setQrPollingInterval(null);
             if (autoDeleteTimeout) clearTimeout(autoDeleteTimeout);
             setAutoDeleteTimeout(null);
             setShowQRDialog(false);
             // Auto-delete the session if not connected
-            await apiRequest("DELETE", `/api/whatsapp/sessions/${session.id}`, {});
+            try {
+              const deleteResponse = await apiRequest("DELETE", `/api/whatsapp/sessions/${session.id}`, {});
+              await deleteResponse.json();
+            } catch (e) {
+              console.error("Error deleting session:", e);
+            }
             toast({
               title: "Connection Timeout",
               description: "QR code expired. Please try again.",
@@ -87,7 +101,8 @@ export default function WhatsAppConnectionsPage() {
 
   const createSessionMutation = useMutation({
     mutationFn: async (name: string) => {
-      return await apiRequest("POST", "/api/whatsapp/sessions", { deviceName: name });
+      const response = await apiRequest("POST", "/api/whatsapp/sessions", { deviceName: name });
+      return await response.json() as WhatsappSession;
     },
     onSuccess: (session: WhatsappSession) => {
       setSelectedSession(session);
