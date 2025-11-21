@@ -126,7 +126,12 @@ export class DatabaseStorage implements IStorage {
       sessionIds.map(sessionId => this.getConversationsBySessionId(sessionId))
     );
     
-    return allConversations.flat();
+    // Flatten and sort by lastMessageTime descending (newest first)
+    return allConversations.flat().sort((a, b) => {
+      const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+      const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+      return timeB - timeA;
+    });
   }
 
   async createConversation(insertConversation: InsertConversation): Promise<Conversation> {

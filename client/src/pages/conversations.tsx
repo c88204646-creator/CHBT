@@ -20,11 +20,13 @@ export default function ConversationsPage() {
 
   const { data: conversations, isLoading: conversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
+    refetchInterval: 2000, // Poll every 2 seconds for new conversations
   });
 
   const { data: messages, isLoading: messagesLoading } = useQuery<Message[]>({
     queryKey: ["/api/conversations", selectedConversation, "messages"],
     enabled: !!selectedConversation,
+    refetchInterval: 1500, // Poll every 1.5 seconds for new messages
   });
 
   const sendMessageMutation = useMutation({
