@@ -182,7 +182,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Conversation routes
   app.get("/api/conversations", requireAuth, async (req, res) => {
     try {
-      const conversations = await storage.getConversationsByUserId(req.user!.userId);
+      const sessionId = req.query.sessionId as string | undefined;
+      
+      if (!sessionId) {
+        return res.status(400).json({ message: "sessionId parameter is required" });
+      }
+
+      const session = await storage.getWhatsappSession(sessionId);
+      if (!session || session.userId !== req.user!.userId) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const conversations = await storage.getConversationsBySessionId(sessionId);
       res.json(conversations);
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to get conversations" });

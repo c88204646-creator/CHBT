@@ -9,17 +9,37 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Search, Send, MessageSquare, Phone } from "lucide-react";
-import type { Conversation, Message } from "@shared/schema";
+import { Search, Send, MessageSquare, Phone, Smartphone } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { Conversation, Message, WhatsappSession } from "@shared/schema";
 
 export default function ConversationsPage() {
   const { toast } = useToast();
+  const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [messageText, setMessageText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
+  const { data: sessions, isLoading: sessionsLoading } = useQuery<WhatsappSession[]>({
+    queryKey: ["/api/whatsapp/sessions"],
+  });
+
   const { data: conversations, isLoading: conversationsLoading } = useQuery<Conversation[]>({
-    queryKey: ["/api/conversations"],
+    queryKey: ["/api/conversations", selectedSession],
+    enabled: !!selectedSession,
+    queryFn: async () => {
+      const response = await fetch(`/api/conversations?sessionId=${selectedSession}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch conversations");
+      return response.json();
+    },
   });
 
   const { data: messages, isLoading: messagesLoading } = useQuery<Message[]>({
@@ -70,6 +90,45 @@ export default function ConversationsPage() {
           Manage your WhatsApp conversations
         </p>
       </div>
+
+      {/* Device Selection */}
+      <Card className="p-4">
+        <div className="flex items-center gap-3">
+          <Smartphone className="w-5 h-5 text-muted-foreground" />
+          <div className="flex-1">
+            <label className="text-sm font-medium text-foreground block mb-2">
+              Select Device
+            </label>
+            {sessionsLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : sessions && sessions.length > 0 ? (
+              <Select value={selectedSession || ""} onValueChange={setSelectedSession}>
+                <SelectTrigger data-testid="select-device">
+                  <SelectValue placeholder="Choose a device..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {sessions.map((session) => (
+                    <SelectItem key={session.id} value={session.id}>
+                      {session.deviceName || session.phoneNumber || `Device ${session.id.slice(0, 8)}`}
+                      <span className="text-xs text-muted-foreground ml-2">
+                        ({session.status})
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No devices connected. Go to{" "}
+                <a href="/whatsapp-connections" className="text-primary hover:underline">
+                  WhatsApp Connections
+                </a>{" "}
+                to add a device.
+              </p>
+            )}
+          </div>
+        </div>
+      </Card>
 
       <Card className="overflow-hidden">
         <div className="flex h-[calc(100vh-16rem)]">
