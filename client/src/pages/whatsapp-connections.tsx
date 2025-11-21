@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Smartphone, Plus, QrCode, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Smartphone, Plus, QrCode, CheckCircle2, XCircle, Loader2, Building2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { WhatsappSession } from "@shared/schema";
 
 export default function WhatsAppConnectionsPage() {
@@ -169,15 +170,22 @@ export default function WhatsAppConnectionsPage() {
           {sessions.map((session) => (
             <Card key={session.id} className="hover-elevate" data-testid={`card-session-${session.id}`}>
               <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3 flex-1">
                     <div className="w-10 h-10 rounded-lg bg-whatsapp/10 flex items-center justify-center">
                       <Smartphone className="w-5 h-5 text-whatsapp" />
                     </div>
-                    <div>
-                      <CardTitle className="text-base">
-                        {session.phoneNumber || session.deviceName || "Pending"}
-                      </CardTitle>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-base">
+                          {session.phoneNumber || session.deviceName || "Pending"}
+                        </CardTitle>
+                        {session.accountType === "business" && (
+                          <Badge variant="secondary" className="text-xs" data-testid={`badge-business-${session.id}`}>
+                            Business
+                          </Badge>
+                        )}
+                      </div>
                       <CardDescription className="text-xs mt-1">
                         {getStatusBadge(session.status)}
                       </CardDescription>
@@ -303,15 +311,30 @@ export default function WhatsAppConnectionsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="account-type">Account Type</Label>
-              <Select value={accountType} onValueChange={setAccountType}>
-                <SelectTrigger id="account-type" data-testid="select-account-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="normal">WhatsApp Normal</SelectItem>
-                  <SelectItem value="business">WhatsApp Business</SelectItem>
-                </SelectContent>
-              </Select>
+              <ToggleGroup
+                type="single"
+                value={accountType}
+                onValueChange={(value) => value && setAccountType(value)}
+                className="bg-muted p-1 rounded-lg flex gap-1 w-full"
+                data-testid="toggle-account-type"
+              >
+                <ToggleGroupItem
+                  value="normal"
+                  className="flex-1 gap-2 data-[state=on]:bg-background data-[state=on]:text-foreground"
+                  data-testid="toggle-normal"
+                >
+                  <Smartphone className="w-4 h-4" />
+                  <span>Normal</span>
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="business"
+                  className="flex-1 gap-2 data-[state=on]:bg-background data-[state=on]:text-foreground"
+                  data-testid="toggle-business"
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>Business</span>
+                </ToggleGroupItem>
+              </ToggleGroup>
             </div>
             <div className="flex gap-2">
               <Button
