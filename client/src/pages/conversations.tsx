@@ -127,7 +127,7 @@ export default function ConversationsPage() {
                 <p className="text-sm text-muted-foreground">
                   No devices connected. Create or connect a WhatsApp account to start chatting.
                 </p>
-                <Link href="/whatsapp-connections">
+                <Link href="/whatsapp">
                   <Button className="w-full gap-2" data-testid="button-go-to-connections">
                     <Plus className="w-4 h-4" />
                     Connect WhatsApp Account
