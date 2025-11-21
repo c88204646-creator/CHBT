@@ -4,6 +4,7 @@ import makeWASocket, {
   WASocket,
   proto,
   WAMessage,
+  extractMessageContent,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
@@ -139,70 +140,68 @@ class WhatsAppManager {
       const contactNumber = messageKey.remoteJid.split("@")[0];
       const contactName = msg.pushName || contactNumber;
       
-      // Extract message text - try multiple ways
+      // Extract message text using Baileys' extraction function
       let messageText = "";
       
       try {
-        // Method 1: Direct conversation text
-        if (messageContent.conversation) {
-          messageText = messageContent.conversation;
-        } 
-        // Method 2: Extended text message
-        else if (messageContent.extendedTextMessage) {
-          messageText = messageContent.extendedTextMessage.text || "";
+        // Use Baileys' built-in extraction function
+        const extractedContent = extractMessageContent(messageContent);
+        if (extractedContent) {
+          messageText = extractedContent.text || "";
         }
-        // Method 3: Text message (older format)
-        else if ((messageContent as any).textMessage?.text) {
-          messageText = (messageContent as any).textMessage.text;
-        }
-        // Method 4: Quote message with text
-        else if ((messageContent as any).quotedMessage?.conversation) {
-          messageText = (messageContent as any).quotedMessage.conversation;
-        }
-        // Media with captions
-        else if (messageContent.imageMessage?.caption) {
-          messageText = messageContent.imageMessage.caption;
-        } 
-        else if (messageContent.videoMessage?.caption) {
-          messageText = messageContent.videoMessage.caption;
-        } 
-        else if (messageContent.documentMessage?.caption) {
-          messageText = messageContent.documentMessage.caption;
-        }
-        // Media without captions
-        else if (messageContent.audioMessage) {
-          messageText = "[Audio message]";
-        } 
-        else if (messageContent.imageMessage) {
-          messageText = "[Image]";
-        } 
-        else if (messageContent.videoMessage) {
-          messageText = "[Video]";
-        } 
-        else if (messageContent.documentMessage) {
-          messageText = `[Document: ${messageContent.documentMessage.fileName || "file"}]`;
-        } 
-        else if (messageContent.stickerMessage) {
-          messageText = "[Sticker]";
-        } 
-        else if (messageContent.contactMessage) {
-          messageText = `[Contact: ${messageContent.contactMessage.displayName}]`;
-        }
-        // Fallback: try to extract any text from the whole object
-        else {
-          const allText = JSON.stringify(messageContent);
-          if (allText.length > 100 && allText.length < 5000) {
-            messageText = "[Message type not recognized]";
+        
+        // Fallback methods if extraction fails
+        if (!messageText) {
+          // Method 1: Direct conversation text
+          if (messageContent.conversation) {
+            messageText = messageContent.conversation;
+          } 
+          // Method 2: Extended text message
+          else if (messageContent.extendedTextMessage) {
+            messageText = messageContent.extendedTextMessage.text || "";
+          }
+          // Method 3: Image/Video/Audio caption
+          else if ((messageContent.imageMessage?.caption)) {
+            messageText = messageContent.imageMessage.caption;
+          }
+          else if ((messageContent.videoMessage?.caption)) {
+            messageText = messageContent.videoMessage.caption;
+          }
+          else if ((messageContent.documentMessage?.caption)) {
+            messageText = messageContent.documentMessage.caption;
+          }
+          // Media without captions
+          else if (messageContent.audioMessage) {
+            messageText = "[Audio message]";
+          } 
+          else if (messageContent.imageMessage) {
+            messageText = "[Image]";
+          } 
+          else if (messageContent.videoMessage) {
+            messageText = "[Video]";
+          } 
+          else if (messageContent.documentMessage) {
+            messageText = `[Document: ${messageContent.documentMessage.fileName || "file"}]`;
+          } 
+          else if (messageContent.stickerMessage) {
+            messageText = "[Sticker]";
+          } 
+          else if (messageContent.contactMessage) {
+            messageText = `[Contact: ${(messageContent.contactMessage as any).displayName}]`;
+          }
+          else {
+            messageText = "[Message]";
           }
         }
       } catch (e) {
         console.error("[MESSAGE-ERROR] Failed to extract message text:", e);
-        messageText = "[Error extracting message]";
+        // Emergency fallback: still save something
+        messageText = "[Message]";
       }
 
       // Ensure we always have text content
       if (!messageText || messageText.trim() === "") {
-        messageText = "[Message received but content could not be extracted]";
+        messageText = "[Message]";
       }
 
       console.log(`[MESSAGE] ✓ RECEIVED Session: ${sessionId}, Contact: ${contactNumber}, Text: ${messageText.substring(0, 100)}`);
