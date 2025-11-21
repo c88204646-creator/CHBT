@@ -22,7 +22,7 @@ export default function WhatsAppConnectionsPage() {
 
   const { data: sessions, isLoading } = useQuery<WhatsappSession[]>({
     queryKey: ["/api/whatsapp/sessions"],
-    refetchInterval: showQRDialog ? 500 : false,
+    refetchInterval: showQRDialog ? 500 : 30000, // Poll every 30 seconds to keep sessions alive
   });
 
   // Get the selected session from the list
@@ -40,17 +40,14 @@ export default function WhatsAppConnectionsPage() {
       setShowDeviceNameDialog(false);
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
       
-      // Show toast with action to view QR
+      // Auto-open QR dialog after session creation
+      setSelectedSessionId(session.id);
+      setShowQRDialog(true);
+      
+      // Show confirmation toast
       toast({
         title: "WhatsApp Session Created",
         description: `Device "${session.deviceName}" is ready. Scan the QR code to connect.`,
-        action: {
-          label: "View QR",
-          onClick: () => {
-            setSelectedSessionId(session.id);
-            setShowQRDialog(true);
-          },
-        },
       });
     },
     onError: (error: any) => {
