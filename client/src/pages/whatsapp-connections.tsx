@@ -159,6 +159,22 @@ export default function WhatsAppConnectionsPage() {
                       View QR
                     </Button>
                   )}
+                  {session.status === "connecting" && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        if (confirm("Cancel this connection attempt?")) {
+                          disconnectMutation.mutate(session.id);
+                        }
+                      }}
+                      disabled={disconnectMutation.isPending}
+                      data-testid={`button-delete-connecting-${session.id}`}
+                    >
+                      {disconnectMutation.isPending ? "Canceling..." : "Cancel"}
+                    </Button>
+                  )}
                   {session.status === "connected" && (
                     <Button
                       variant="outline"
@@ -169,6 +185,22 @@ export default function WhatsAppConnectionsPage() {
                       data-testid={`button-disconnect-${session.id}`}
                     >
                       Disconnect
+                    </Button>
+                  )}
+                  {session.status === "disconnected" && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        if (confirm("Delete this session permanently?")) {
+                          disconnectMutation.mutate(session.id);
+                        }
+                      }}
+                      disabled={disconnectMutation.isPending}
+                      data-testid={`button-delete-session-${session.id}`}
+                    >
+                      {disconnectMutation.isPending ? "Deleting..." : "Delete"}
                     </Button>
                   )}
                 </div>
