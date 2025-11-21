@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,87 +17,19 @@ export default function WhatsAppConnectionsPage() {
   const [showDeviceNameDialog, setShowDeviceNameDialog] = useState(false);
   const [showQRDialog, setShowQRDialog] = useState(false);
   const [deviceName, setDeviceName] = useState("");
-  const [selectedSession, setSelectedSession] = useState<WhatsappSession | null>(null);
-  const [qrPollingInterval, setQrPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [autoDeleteTimeout, setAutoDeleteTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const { data: sessions, isLoading } = useQuery<WhatsappSession[]>({
     queryKey: ["/api/whatsapp/sessions"],
+    refetchInterval: showQRDialog ? 500 : false,
   });
 
-  // Poll for QR code and connection status
-  const startQRPolling = (session: WhatsappSession) => {
-    let pollCount = 0;
-    const interval = setInterval(async () => {
-      pollCount++;
-      try {
-        const response = await fetch(`/api/whatsapp/sessions`, {
-          credentials: "include",
-          cache: "no-cache",
-        });
-        if (response.ok) {
-          const updatedSessions = await response.json();
-          const updatedSession = updatedSessions.find((s: WhatsappSession) => s.id === session.id);
-          
-          if (!updatedSession) {
-            console.log("[POLL] Session not found");
-            return;
-          }
-          
-          console.log("[POLL] Updated session status:", updatedSession.status, "hasQR:", !!updatedSession.qrCode);
-          
-          // Check if QR is ready
-          if (updatedSession.qrCode) {
-            console.log("[POLL] QR code found, updating state");
-            setSelectedSession(updatedSession);
-          }
-          
-          // Check if successfully connected
-          if (updatedSession.status === "connected") {
-            console.log("[POLL] Connection successful!");
-            clearInterval(interval);
-            setQrPollingInterval(null);
-            if (autoDeleteTimeout) clearTimeout(autoDeleteTimeout);
-            setAutoDeleteTimeout(null);
-            setShowQRDialog(false);
-            toast({
-              title: "Connected!",
-              description: `WhatsApp session connected to ${updatedSession.phoneNumber}`,
-            });
-            queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
-            return;
-          }
-          
-          // Timeout after 120 seconds (QR expires after ~90 seconds in Baileys)
-          if (pollCount > 240) {
-            console.log("[POLL] QR code timeout, deleting session");
-            clearInterval(interval);
-            setQrPollingInterval(null);
-            if (autoDeleteTimeout) clearTimeout(autoDeleteTimeout);
-            setAutoDeleteTimeout(null);
-            setShowQRDialog(false);
-            // Auto-delete the session if not connected
-            try {
-              const deleteResponse = await apiRequest("DELETE", `/api/whatsapp/sessions/${session.id}`, {});
-              await deleteResponse.json();
-            } catch (e) {
-              console.error("Error deleting session:", e);
-            }
-            toast({
-              title: "Connection Timeout",
-              description: "QR code expired. Please try again.",
-              variant: "destructive",
-            });
-            queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
-          }
-        }
-      } catch (error) {
-        console.error("Error polling QR code:", error);
-      }
-    }, 500);
-    
-    setQrPollingInterval(interval);
-  };
+  // Get the selected session from the list
+  const selectedSession = selectedSessionId 
+    ? sessions?.find(s => s.id === selectedSessionId) || null 
+    : null;
+
 
   const createSessionMutation = useMutation({
     mutationFn: async (name: string) => {
@@ -105,11 +37,10 @@ export default function WhatsAppConnectionsPage() {
       return await response.json() as WhatsappSession;
     },
     onSuccess: (session: WhatsappSession) => {
-      setSelectedSession(session);
+      setSelectedSessionId(session.id);
       setShowDeviceNameDialog(false);
       setShowQRDialog(true);
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
-      startQRPolling(session);
     },
     onError: (error: any) => {
       toast({
@@ -119,6 +50,19 @@ export default function WhatsAppConnectionsPage() {
       });
     },
   });
+
+  // Monitor connection status and auto-delete on timeout
+  useEffect(() => {
+    if (!showQRDialog || !selectedSession) return;
+    
+    if (selectedSession.status === "connected") {
+      setShowQRDialog(false);
+      toast({
+        title: "Connected!",
+        description: `WhatsApp session connected to ${selectedSession.phoneNumber}`,
+      });
+    }
+  }, [selectedSession?.status, showQRDialog, selectedSession]);
 
   const disconnectMutation = useMutation({
     mutationFn: async (sessionId: string) => {
@@ -236,9 +180,8 @@ export default function WhatsAppConnectionsPage() {
                       size="sm"
                       className="flex-1"
                       onClick={() => {
-                        setSelectedSession(session);
+                        setSelectedSessionId(session.id);
                         setShowQRDialog(true);
-                        if (qrPollingInterval) clearInterval(qrPollingInterval);
                       }}
                       data-testid={`button-view-qr-${session.id}`}
                     >
@@ -365,13 +308,12 @@ export default function WhatsAppConnectionsPage() {
 
       <Dialog open={showQRDialog} onOpenChange={(open) => {
         setShowQRDialog(open);
-        if (!open && qrPollingInterval) {
-          clearInterval(qrPollingInterval);
-          setQrPollingInterval(null);
-        }
-        if (!open && autoDeleteTimeout) {
-          clearTimeout(autoDeleteTimeout);
-          setAutoDeleteTimeout(null);
+        if (!open) {
+          setSelectedSessionId(null);
+          if (autoDeleteTimeout) {
+            clearTimeout(autoDeleteTimeout);
+            setAutoDeleteTimeout(null);
+          }
         }
       }}>
         <DialogContent className="sm:max-w-md">
