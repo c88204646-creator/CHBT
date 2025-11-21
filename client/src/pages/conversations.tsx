@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Search, Send, MessageSquare, Phone, Smartphone } from "lucide-react";
+import { Search, Send, MessageSquare, Phone, Smartphone, Plus } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -122,13 +123,17 @@ export default function ConversationsPage() {
                 </SelectContent>
               </Select>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                No devices connected. Go to{" "}
-                <a href="/whatsapp-connections" className="text-primary hover:underline">
-                  WhatsApp Connections
-                </a>{" "}
-                to add a device.
-              </p>
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">
+                  No devices connected. Create or connect a WhatsApp account to start chatting.
+                </p>
+                <Link href="/whatsapp-connections">
+                  <Button className="w-full gap-2" data-testid="button-go-to-connections">
+                    <Plus className="w-4 h-4" />
+                    Connect WhatsApp Account
+                  </Button>
+                </Link>
+              </div>
             )}
           </div>
         </div>
