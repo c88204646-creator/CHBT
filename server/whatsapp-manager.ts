@@ -200,41 +200,66 @@ class WhatsAppManager {
         messageText = "[Error extracting message]";
       }
 
-      // Save message even if text couldn't be extracted perfectly
+      // Ensure we always have text content
       if (!messageText || messageText.trim() === "") {
-        messageText = "[Empty message]";
+        messageText = "[Message received but content could not be extracted]";
       }
 
       console.log(`[MESSAGE] ✓ RECEIVED Session: ${sessionId}, Contact: ${contactNumber}, Text: ${messageText.substring(0, 100)}`);
 
-      let conversation = (await storage.getConversationsBySessionId(sessionId)).find(
-        (c) => c.contactNumber === contactNumber
-      );
-
-      if (!conversation) {
-        conversation = await storage.createConversation({
-          sessionId,
-          contactName,
-          contactNumber,
-          lastMessage: messageText,
-          lastMessageTime: new Date(),
-          unreadCount: 1,
-        });
-      } else {
-        await storage.updateConversation(conversation.id, {
-          lastMessage: messageText,
-          lastMessageTime: new Date(),
-          unreadCount: (conversation.unreadCount || 0) + 1,
-        });
+      // Get or create conversation - with duplicate prevention
+      let conversation: any = null;
+      
+      try {
+        const existingConversations = await storage.getConversationsBySessionId(sessionId);
+        conversation = existingConversations.find((c) => c.contactNumber === contactNumber);
+      } catch (e) {
+        console.error("[MESSAGE] Error fetching conversations:", e);
       }
 
-      await storage.createMessage({
-        conversationId: conversation.id,
-        content: messageText,
-        fromMe: false,
-        timestamp: new Date(),
-        status: "delivered",
-      });
+      if (!conversation) {
+        try {
+          conversation = await storage.createConversation({
+            sessionId,
+            contactName,
+            contactNumber,
+            lastMessage: messageText,
+            lastMessageTime: new Date(),
+            unreadCount: 1,
+          });
+          console.log(`[MESSAGE] Created new conversation: ${conversation.id}`);
+        } catch (e) {
+          console.error("[MESSAGE] Error creating conversation:", e);
+          // Try to find it again in case another request just created it
+          const retryConvs = await storage.getConversationsBySessionId(sessionId);
+          conversation = retryConvs.find((c) => c.contactNumber === contactNumber);
+          if (!conversation) throw e;
+        }
+      } else {
+        try {
+          await storage.updateConversation(conversation.id, {
+            lastMessage: messageText,
+            lastMessageTime: new Date(),
+            unreadCount: (conversation.unreadCount || 0) + 1,
+          });
+        } catch (e) {
+          console.error("[MESSAGE] Error updating conversation:", e);
+        }
+      }
+
+      // Always create message with content
+      try {
+        await storage.createMessage({
+          conversationId: conversation.id,
+          content: messageText,
+          fromMe: false,
+          timestamp: new Date(),
+          status: "delivered",
+        });
+        console.log(`[MESSAGE] Message saved with content: ${messageText.substring(0, 50)}`);
+      } catch (e) {
+        console.error("[MESSAGE] Error saving message:", e);
+      }
 
       const chatbotRules = await storage.getChatbotRulesByUserId(userId);
       const matchedRule = chatbotRules.find(
