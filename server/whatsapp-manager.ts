@@ -137,15 +137,16 @@ class WhatsAppManager {
       const messageKey = msg.key;
       const messageContent = msg.message;
 
-      console.log("[MESSAGE-HANDLE] Received message:", {
+      console.log("[MESSAGE-HANDLE] Message received:", {
         remoteJid: messageKey.remoteJid,
         fromMe: messageKey.fromMe,
         hasContent: !!messageContent,
-        contentKeys: messageContent ? Object.keys(messageContent) : []
+        contentKeys: messageContent ? Object.keys(messageContent) : [],
+        messageId: messageKey.id
       });
 
-      if (!messageKey.remoteJid || !messageContent) {
-        console.log("[MESSAGE-SKIP] No remoteJid or content");
+      if (!messageKey.remoteJid) {
+        console.log("[MESSAGE-SKIP] No remoteJid");
         return;
       }
 
@@ -160,47 +161,64 @@ class WhatsAppManager {
       
       let messageText = "";
       
-      // Extract text - simple and robust
-      if (messageContent.conversation) {
-        messageText = messageContent.conversation;
-      } 
-      else if (messageContent.extendedTextMessage?.text) {
-        messageText = messageContent.extendedTextMessage.text;
-      }
-      else if (messageContent.imageMessage?.caption) {
-        messageText = `[Image] ${messageContent.imageMessage.caption || ""}`;
-      }
-      else if (messageContent.videoMessage?.caption) {
-        messageText = `[Video] ${messageContent.videoMessage.caption || ""}`;
-      }
-      else if (messageContent.documentMessage?.caption) {
-        messageText = `[Document: ${messageContent.documentMessage.fileName}] ${messageContent.documentMessage.caption || ""}`;
-      }
-      else if (messageContent.audioMessage) {
-        messageText = "[Audio Message]";
-      } 
-      else if (messageContent.imageMessage) {
-        messageText = "[Image]";
-      } 
-      else if (messageContent.videoMessage) {
-        messageText = "[Video]";
-      } 
-      else if (messageContent.documentMessage) {
-        messageText = `[Document: ${messageContent.documentMessage.fileName}]`;
-      } 
-      else if (messageContent.stickerMessage) {
-        messageText = "[Sticker]";
-      } 
-      else if (messageContent.contactMessage) {
-        messageText = `[Contact: ${(messageContent.contactMessage as any).displayName}]`;
-      }
-      else {
-        messageText = "[Message]";
+      // Handle case where messageContent might be empty in synced messages
+      if (!messageContent) {
+        console.log("[MESSAGE-HANDLE] No message content, checking message body");
+        // For synced messages, try alternate paths
+        const msgBody = (msg as any).body || (msg as any).text || "";
+        if (msgBody) {
+          messageText = msgBody;
+        } else {
+          messageText = "[Message received]";
+        }
+      } else {
+        // Extract text from messageContent
+        if (messageContent.conversation) {
+          messageText = messageContent.conversation;
+        } 
+        else if (messageContent.extendedTextMessage?.text) {
+          messageText = messageContent.extendedTextMessage.text;
+        }
+        else if ((messageContent as any).textMessage?.text) {
+          messageText = (messageContent as any).textMessage.text;
+        }
+        else if (messageContent.imageMessage?.caption) {
+          messageText = `[Image] ${messageContent.imageMessage.caption || ""}`;
+        }
+        else if (messageContent.videoMessage?.caption) {
+          messageText = `[Video] ${messageContent.videoMessage.caption || ""}`;
+        }
+        else if (messageContent.documentMessage?.caption) {
+          messageText = `[Document: ${messageContent.documentMessage.fileName}] ${messageContent.documentMessage.caption || ""}`;
+        }
+        else if (messageContent.audioMessage) {
+          messageText = "[Audio Message]";
+        } 
+        else if (messageContent.imageMessage) {
+          messageText = "[Image]";
+        } 
+        else if (messageContent.videoMessage) {
+          messageText = "[Video]";
+        } 
+        else if (messageContent.documentMessage) {
+          messageText = `[Document: ${messageContent.documentMessage.fileName}]`;
+        } 
+        else if (messageContent.stickerMessage) {
+          messageText = "[Sticker]";
+        } 
+        else if (messageContent.contactMessage) {
+          messageText = `[Contact: ${(messageContent.contactMessage as any).displayName}]`;
+        }
+        else {
+          // Last resort: log what we got and mark as message
+          console.log("[MESSAGE-HANDLE] Unknown content type:", Object.keys(messageContent));
+          messageText = "[Message received]";
+        }
       }
 
       // Never save empty
       if (!messageText || messageText.trim() === "") {
-        messageText = "[Message]";
+        messageText = "[Message received]";
       }
 
       console.log(`[MESSAGE] ✓ RECEIVED Session: ${sessionId}, Contact: ${contactNumber}, Text: ${messageText.substring(0, 100)}`);
