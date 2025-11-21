@@ -45,116 +45,66 @@ class WhatsAppManager {
         browser: ["Ubuntu", "Chrome", "121.0"],
         syncFullHistory: false,
         markOnlineOnConnect: true,
-        keepAliveIntervalMs: 30000,
-        defaultQueryTimeoutMs: 0,
-        shouldIgnoreJid: (jid) => false,
-        // Try pairing code first for Business accounts
-        qrTimeout: 60000,
       });
 
-      console.log("[SOCKET] Socket created for session:", sessionId);
+      console.log("[SOCKET] ✅ Socket created for session:", sessionId);
 
       sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        console.log("[QR] Connection update:", { connection, hasQr: !!qr });
+        try {
+          const { connection, lastDisconnect, qr } = update;
+          console.log("[CONNECTION] Update:", { connection, hasQr: !!qr });
 
-        if (qr) {
-          try {
+          if (qr) {
+            console.log("[QR] Generating QR code...");
             const qrCodeData = await QRCode.toDataURL(qr);
-            console.log("[QR] Generated QR code for session:", sessionId);
             await storage.updateWhatsappSession(sessionId, {
               qrCode: qrCodeData,
               status: "connecting",
             });
-            
+            console.log("[QR] ✅ QR code saved");
+          }
+
+          if (connection === "close") {
+            const shouldReconnect =
+              (lastDisconnect?.error as Boom)?.output?.statusCode !==
+              DisconnectReason.loggedOut;
+
+            if (shouldReconnect) {
+              console.log("[CONNECTION] Reconnecting...");
+              setTimeout(() => this.createSession(sessionId, userId), 3000);
+            } else {
+              console.log("[CONNECTION] Logged out");
+              await storage.updateWhatsappSession(sessionId, {
+                status: "disconnected",
+              });
+              this.connections.delete(sessionId);
+            }
+          } else if (connection === "open") {
+            const phoneNumber = sock.user?.id?.split(":")[0] || "unknown";
+            console.log("[CONNECTION] ✅ CONNECTED with phone:", phoneNumber);
+            await storage.updateWhatsappSession(sessionId, {
+              phoneNumber,
+              status: "connected",
+              qrCode: null,
+            });
+
             const conn = this.connections.get(sessionId);
             if (conn) {
-              conn.qrCode = qrCodeData;
-              conn.status = "connecting";
+              conn.status = "connected";
+              conn.qrCode = null;
             }
-          } catch (error) {
-            console.error("[QR] Error generating QR code:", error);
           }
-        }
-
-        // Handle pairing code for Business accounts
-        if (update.code) {
-          const pairingCode = update.code;
-          console.log("[PAIRING] Generated pairing code:", pairingCode);
-          await storage.updateWhatsappSession(sessionId, {
-            qrCode: pairingCode, // Store code in qrCode field temporarily
-            status: "connecting",
-          });
-          
-          const conn = this.connections.get(sessionId);
-          if (conn) {
-            conn.pairingCode = pairingCode;
-            conn.status = "connecting";
-          }
-        }
-
-        if (connection === "close") {
-          const shouldReconnect =
-            (lastDisconnect?.error as Boom)?.output?.statusCode !==
-            DisconnectReason.loggedOut;
-
-          if (shouldReconnect) {
-            console.log("[QR] Reconnecting session:", sessionId);
-            setTimeout(() => this.createSession(sessionId, userId), 3000);
-          } else {
-            console.log("[QR] Session logged out:", sessionId);
-            await storage.updateWhatsappSession(sessionId, {
-              status: "disconnected",
-            });
-            this.connections.delete(sessionId);
-          }
-        } else if (connection === "open") {
-          const phoneNumber = sock.user?.id?.split(":")[0] || "unknown";
-          console.log("[QR] ✅ CONNECTED with phone:", phoneNumber);
-          await storage.updateWhatsappSession(sessionId, {
-            phoneNumber,
-            status: "connected",
-            qrCode: null,
-          });
-
-          const conn = this.connections.get(sessionId);
-          if (conn) {
-            conn.status = "connected";
-            conn.qrCode = null;
-          }
-
-          // Load all existing chats when connected
-          console.log("[CHATS] Loading existing chats for session:", sessionId);
-          await this.loadAllChats(sessionId, userId, sock);
+        } catch (error) {
+          console.error("[CONNECTION] Error:", error);
         }
       });
 
       sock.ev.on("creds.update", saveCreds);
 
-      console.log("[LISTENERS] Registering event listeners for session:", sessionId);
-
-      // Listen for chat updates
-      sock.ev.on("chats.set", async (data) => {
-        console.log(`[CHATS-SET] Received ${data.chats?.length || 0} chats`);
-        if (data.chats) {
-          for (const chat of data.chats) {
-            await this.processChat(sessionId, userId, chat, sock);
-          }
-        }
-      });
-
-      sock.ev.on("chats.upsert", async (chats) => {
-        console.log(`[CHATS-UPSERT] Received ${chats.length} chat updates`);
-        for (const chat of chats) {
-          await this.processChat(sessionId, userId, chat, sock);
-        }
-      });
-
-      // PRIMARY: Listen to messages.upsert for REAL-TIME messages
+      // Listen to messages
       sock.ev.on("messages.upsert", async (m) => {
-        console.log(`[MESSAGES-UPSERT] ✅ Type: ${m.type}, Count: ${m.messages.length}`);
+        console.log(`[MESSAGES-UPSERT] Type: ${m.type}, Count: ${m.messages.length}`);
         for (const msg of m.messages) {
-          console.log(`[MESSAGE-RECEIVED] From: ${msg.key.remoteJid}, FromMe: ${msg.key.fromMe}, HasContent: ${!!msg.message}`);
           await this.handleIncomingMessage(sessionId, userId, msg);
         }
       });
