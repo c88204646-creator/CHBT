@@ -125,7 +125,22 @@ class WhatsAppManager {
       const messageKey = msg.key;
       const messageContent = msg.message;
 
-      if (!messageKey.remoteJid || !messageContent) return;
+      console.log("[MESSAGE-DEBUG] Incoming message key:", { 
+        remoteJid: messageKey.remoteJid,
+        fromMe: messageKey.fromMe,
+        hasContent: !!messageContent
+      });
+
+      if (!messageKey.remoteJid || !messageContent) {
+        console.log("[MESSAGE-DEBUG] Skipping - no remoteJid or content");
+        return;
+      }
+
+      // Skip messages sent by me
+      if (messageKey.fromMe) {
+        console.log("[MESSAGE-DEBUG] Skipping - message from me");
+        return;
+      }
 
       const contactNumber = messageKey.remoteJid.split("@")[0];
       const contactName = msg.pushName || contactNumber;
@@ -160,9 +175,12 @@ class WhatsAppManager {
       }
 
       // Only save if we have meaningful content
-      if (!messageText || messageText.trim() === "") return;
+      if (!messageText || messageText.trim() === "") {
+        console.log("[MESSAGE-DEBUG] Skipping - empty message text");
+        return;
+      }
 
-      console.log(`[MESSAGE] Session: ${sessionId}, Contact: ${contactNumber}, Text: ${messageText.substring(0, 50)}`);
+      console.log(`[MESSAGE] ✓ RECEIVED Session: ${sessionId}, Contact: ${contactNumber}, Text: ${messageText.substring(0, 100)}`);
 
       let conversation = (await storage.getConversationsBySessionId(sessionId)).find(
         (c) => c.contactNumber === contactNumber
@@ -212,14 +230,16 @@ class WhatsAppManager {
     try {
       const connection = this.connections.get(sessionId);
       if (!connection || !connection.sock || connection.status !== "connected") {
+        console.error(`[SEND-ERROR] Session not found or not connected. Status: ${connection?.status}`);
         return false;
       }
 
       const jid = to.includes("@") ? to : `${to}@s.whatsapp.net`;
       await connection.sock.sendMessage(jid, { text });
+      console.log(`[SEND] ✓ Message sent to ${to}: ${text.substring(0, 50)}`);
       return true;
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("[SEND-ERROR]", error);
       return false;
     }
   }

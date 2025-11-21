@@ -322,6 +322,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test endpoint - send message from WhatsApp
+  app.post("/api/test/send-message", requireAuth, async (req, res) => {
+    try {
+      const { sessionId, contactNumber, message } = req.body;
+
+      if (!sessionId || !contactNumber || !message) {
+        return res.status(400).json({ 
+          message: "sessionId, contactNumber, and message are required" 
+        });
+      }
+
+      const session = await storage.getWhatsappSession(sessionId);
+      if (!session || session.userId !== req.user!.userId) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const sent = await whatsappManager.sendMessage(sessionId, contactNumber, message);
+      
+      if (!sent) {
+        return res.status(500).json({ 
+          message: "Failed to send message. Device may not be connected." 
+        });
+      }
+
+      res.json({ 
+        success: true,
+        message: "Message sent successfully",
+        contact: contactNumber,
+        text: message
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to send test message" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
