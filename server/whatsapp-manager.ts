@@ -42,7 +42,10 @@ class WhatsAppManager {
         auth: state,
         printQRInTerminal: false,
         browser: ["Ubuntu", "Chrome", "121.0"],
+        syncFullHistory: false,
       });
+
+      console.log("[SOCKET] Socket created for session:", sessionId);
 
       sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -101,6 +104,7 @@ class WhatsAppManager {
 
       sock.ev.on("creds.update", saveCreds);
 
+      // Listen to all message events
       sock.ev.on("messages.upsert", async (m) => {
         console.log(`[MESSAGES-EVENT] Type: ${m.type}, Count: ${m.messages.length}`);
         if (m.type === "notify") {
@@ -109,6 +113,12 @@ class WhatsAppManager {
             await this.handleIncomingMessage(sessionId, userId, msg);
           }
         }
+      });
+
+      // Also listen to message.new (for newly synced messages)
+      sock.ev.on("message.new", async (msg) => {
+        console.log(`[MESSAGE-NEW-EVENT] From ${msg.key.remoteJid}`);
+        await this.handleIncomingMessage(sessionId, userId, msg);
       });
 
       this.connections.set(sessionId, {
