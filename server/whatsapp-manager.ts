@@ -42,15 +42,11 @@ class WhatsAppManager {
         auth: state,
         printQRInTerminal: false,
         browser: ["Ubuntu", "Chrome", "121.0"],
-        syncFullHistory: true,
+        syncFullHistory: false,
         markOnlineOnConnect: true,
-        getMessage: async (key) => {
-          try {
-            return await sock.loadMessage(key);
-          } catch (e) {
-            return undefined;
-          }
-        },
+        keepAliveIntervalMs: 30000,
+        defaultQueryTimeoutMs: 0,
+        shouldIgnoreJid: (jid) => false,
       });
 
       console.log("[SOCKET] Socket created for session:", sessionId);
@@ -147,12 +143,15 @@ class WhatsAppManager {
       const messageKey = msg.key;
       const messageContent = msg.message;
 
-      console.log("[MESSAGE-HANDLE] Message received:", {
+      console.log("[MESSAGE-HANDLE] Raw message structure:", {
         remoteJid: messageKey.remoteJid,
         fromMe: messageKey.fromMe,
         hasContent: !!messageContent,
         contentKeys: messageContent ? Object.keys(messageContent) : [],
-        messageId: messageKey.id
+        messageId: messageKey.id,
+        hasBody: !!(msg as any).body,
+        hasText: !!(msg as any).text,
+        allKeys: Object.keys(msg).slice(0, 10)
       });
 
       if (!messageKey.remoteJid) {
@@ -160,25 +159,13 @@ class WhatsAppManager {
         return;
       }
 
-      // Don't skip messages from me - we WANT to see them too!
-
       const contactNumber = messageKey.remoteJid.split("@")[0];
       const contactName = msg.pushName || contactNumber;
       
       let messageText = "";
       
-      // Handle case where messageContent might be empty in synced messages
-      if (!messageContent) {
-        console.log("[MESSAGE-HANDLE] No message content, checking message body");
-        // For synced messages, try alternate paths
-        const msgBody = (msg as any).body || (msg as any).text || "";
-        if (msgBody) {
-          messageText = msgBody;
-        } else {
-          messageText = "[Message received]";
-        }
-      } else {
-        // Extract text from messageContent
+      // PRIORITY 1: Try direct message content first
+      if (messageContent) {
         if (messageContent.conversation) {
           messageText = messageContent.conversation;
         } 
@@ -188,43 +175,48 @@ class WhatsAppManager {
         else if ((messageContent as any).textMessage?.text) {
           messageText = (messageContent as any).textMessage.text;
         }
-        else if (messageContent.imageMessage?.caption) {
-          messageText = `[Image] ${messageContent.imageMessage.caption || ""}`;
+        else if (messageContent.imageMessage) {
+          messageText = `[Image]${messageContent.imageMessage.caption ? ': ' + messageContent.imageMessage.caption : ''}`;
         }
-        else if (messageContent.videoMessage?.caption) {
-          messageText = `[Video] ${messageContent.videoMessage.caption || ""}`;
-        }
-        else if (messageContent.documentMessage?.caption) {
-          messageText = `[Document: ${messageContent.documentMessage.fileName}] ${messageContent.documentMessage.caption || ""}`;
+        else if (messageContent.videoMessage) {
+          messageText = `[Video]${messageContent.videoMessage.caption ? ': ' + messageContent.videoMessage.caption : ''}`;
         }
         else if (messageContent.audioMessage) {
           messageText = "[Audio Message]";
-        } 
-        else if (messageContent.imageMessage) {
-          messageText = "[Image]";
-        } 
-        else if (messageContent.videoMessage) {
-          messageText = "[Video]";
-        } 
+        }
         else if (messageContent.documentMessage) {
-          messageText = `[Document: ${messageContent.documentMessage.fileName}]`;
-        } 
+          messageText = `[Document: ${messageContent.documentMessage.fileName}]${messageContent.documentMessage.caption ? ' - ' + messageContent.documentMessage.caption : ''}`;
+        }
         else if (messageContent.stickerMessage) {
           messageText = "[Sticker]";
-        } 
+        }
         else if (messageContent.contactMessage) {
-          messageText = `[Contact: ${(messageContent.contactMessage as any).displayName}]`;
+          messageText = `[Contact: ${(messageContent.contactMessage as any).displayName || 'Contact'}]`;
+        }
+        else if (messageContent.reactionMessage) {
+          const emoji = (messageContent.reactionMessage as any).text;
+          messageText = `[Reaction: ${emoji}]`;
+        }
+        else if (messageContent.quotedMessage) {
+          messageText = "[Quoted Message]";
         }
         else {
-          // Last resort: log what we got and mark as message
-          console.log("[MESSAGE-HANDLE] Unknown content type:", Object.keys(messageContent));
-          messageText = "[Message received]";
+          console.log("[MESSAGE-HANDLE] ⚠️ Unknown content type:", Object.keys(messageContent));
+          messageText = "";
         }
       }
-
-      // Never save empty
-      if (!messageText || messageText.trim() === "") {
-        messageText = "[Message received]";
+      
+      // PRIORITY 2: Try alternate paths
+      if (!messageText) {
+        const altText = (msg as any).body || (msg as any).text || (msg as any).caption || "";
+        if (altText) {
+          messageText = altText;
+        }
+      }
+      
+      // PRIORITY 3: Last resort
+      if (!messageText) {
+        messageText = messageContent ? "[Message (No Text)]" : "[Message received]";
       }
 
       console.log(`[MESSAGE] ✓ RECEIVED Session: ${sessionId}, Contact: ${contactNumber}, Text: ${messageText.substring(0, 100)}`);
