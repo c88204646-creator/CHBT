@@ -150,11 +150,7 @@ class WhatsAppManager {
         return;
       }
 
-      // Skip messages sent by me
-      if (messageKey.fromMe) {
-        console.log("[MESSAGE-SKIP] Message from me (fromMe=true)");
-        return;
-      }
+      // Don't skip messages from me - we WANT to see them too!
 
       const contactNumber = messageKey.remoteJid.split("@")[0];
       const contactName = msg.pushName || contactNumber;
