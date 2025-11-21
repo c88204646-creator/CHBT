@@ -28,108 +28,96 @@ class WhatsAppManager {
     }
   }
 
-  async createSession(sessionId: string, userId: string): Promise<string | null> {
-    return new Promise((resolve) => {
-      try {
-        const sessionPath = path.join(this.authDir, sessionId);
-        
-        if (!fs.existsSync(sessionPath)) {
-          fs.mkdirSync(sessionPath, { recursive: true });
+  async createSession(sessionId: string, userId: string): Promise<void> {
+    try {
+      const sessionPath = path.join(this.authDir, sessionId);
+      
+      if (!fs.existsSync(sessionPath)) {
+        fs.mkdirSync(sessionPath, { recursive: true });
+      }
+
+      const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+
+      const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false,
+        browser: ["Ubuntu", "Chrome", "121.0"],
+      });
+
+      sock.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        console.log("[QR] Connection update:", { connection, hasQr: !!qr });
+
+        if (qr) {
+          try {
+            const qrCodeData = await QRCode.toDataURL(qr);
+            console.log("[QR] Generated QR code for session:", sessionId);
+            await storage.updateWhatsappSession(sessionId, {
+              qrCode: qrCodeData,
+              status: "connecting",
+            });
+            
+            const conn = this.connections.get(sessionId);
+            if (conn) {
+              conn.qrCode = qrCodeData;
+              conn.status = "connecting";
+            }
+          } catch (error) {
+            console.error("[QR] Error generating QR code:", error);
+          }
         }
 
-        useMultiFileAuthState(sessionPath).then(({ state, saveCreds }) => {
-          const sock = makeWASocket({
-            auth: state,
-            printQRInTerminal: false,
+        if (connection === "close") {
+          const shouldReconnect =
+            (lastDisconnect?.error as Boom)?.output?.statusCode !==
+            DisconnectReason.loggedOut;
+
+          if (shouldReconnect) {
+            console.log("[QR] Reconnecting session:", sessionId);
+            setTimeout(() => this.createSession(sessionId, userId), 3000);
+          } else {
+            console.log("[QR] Session logged out:", sessionId);
+            await storage.updateWhatsappSession(sessionId, {
+              status: "disconnected",
+            });
+            this.connections.delete(sessionId);
+          }
+        } else if (connection === "open") {
+          const phoneNumber = sock.user?.id?.split(":")[0] || "unknown";
+          console.log("[QR] Connected with phone:", phoneNumber);
+          await storage.updateWhatsappSession(sessionId, {
+            phoneNumber,
+            status: "connected",
+            qrCode: null,
           });
 
-          let qrCodeData: string | null = null;
-          let qrResolved = false;
+          const conn = this.connections.get(sessionId);
+          if (conn) {
+            conn.status = "connected";
+            conn.qrCode = null;
+          }
+        }
+      });
 
-          // Timeout de 30 segundos para generar QR
-          const qrTimeout = setTimeout(() => {
-            if (!qrResolved) {
-              qrResolved = true;
-              console.warn("QR code generation timed out for session:", sessionId);
-              resolve(qrCodeData);
-            }
-          }, 30000);
+      sock.ev.on("creds.update", saveCreds);
 
-          sock.ev.on("connection.update", async (update) => {
-            const { connection, lastDisconnect, qr } = update;
+      sock.ev.on("messages.upsert", async (m) => {
+        if (m.type === "notify") {
+          for (const msg of m.messages) {
+            await this.handleIncomingMessage(sessionId, userId, msg);
+          }
+        }
+      });
 
-            if (qr) {
-              qrCodeData = await QRCode.toDataURL(qr);
-              await storage.updateWhatsappSession(sessionId, {
-                qrCode: qrCodeData,
-                status: "connecting",
-              });
-              
-              const conn = this.connections.get(sessionId);
-              if (conn) {
-                conn.qrCode = qrCodeData;
-                conn.status = "connecting";
-              }
-
-              // Resolver promesa cuando QR esté listo
-              if (!qrResolved) {
-                qrResolved = true;
-                clearTimeout(qrTimeout);
-                resolve(qrCodeData);
-              }
-            }
-
-            if (connection === "close") {
-              const shouldReconnect =
-                (lastDisconnect?.error as Boom)?.output?.statusCode !==
-                DisconnectReason.loggedOut;
-
-              if (shouldReconnect) {
-                this.createSession(sessionId, userId);
-              } else {
-                await storage.updateWhatsappSession(sessionId, {
-                  status: "disconnected",
-                });
-                this.connections.delete(sessionId);
-              }
-            } else if (connection === "open") {
-              const phoneNumber = sock.user?.id?.split(":")[0] || "unknown";
-              await storage.updateWhatsappSession(sessionId, {
-                phoneNumber,
-                status: "connected",
-                qrCode: null,
-              });
-
-              const conn = this.connections.get(sessionId);
-              if (conn) {
-                conn.status = "connected";
-                conn.qrCode = null;
-              }
-            }
-          });
-
-          sock.ev.on("creds.update", saveCreds);
-
-          sock.ev.on("messages.upsert", async (m) => {
-            if (m.type === "notify") {
-              for (const msg of m.messages) {
-                await this.handleIncomingMessage(sessionId, userId, msg);
-              }
-            }
-          });
-
-          this.connections.set(sessionId, {
-            sock,
-            qrCode: qrCodeData,
-            status: "connecting",
-            sessionId,
-          });
-        });
-      } catch (error) {
-        console.error("Error creating WhatsApp session:", error);
-        resolve(null);
-      }
-    });
+      this.connections.set(sessionId, {
+        sock,
+        qrCode: null,
+        status: "connecting",
+        sessionId,
+      });
+    } catch (error) {
+      console.error("Error creating WhatsApp session:", error);
+    }
   }
 
   async handleIncomingMessage(sessionId: string, userId: string, msg: WAMessage) {

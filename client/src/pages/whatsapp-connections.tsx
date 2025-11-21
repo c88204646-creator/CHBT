@@ -14,10 +14,49 @@ export default function WhatsAppConnectionsPage() {
   const { toast } = useToast();
   const [showQRDialog, setShowQRDialog] = useState(false);
   const [selectedSession, setSelectedSession] = useState<WhatsappSession | null>(null);
+  const [qrPollingInterval, setQrPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
   const { data: sessions, isLoading } = useQuery<WhatsappSession[]>({
     queryKey: ["/api/whatsapp/sessions"],
   });
+
+  // Poll for QR code updates
+  const startQRPolling = (session: WhatsappSession) => {
+    let pollCount = 0;
+    const interval = setInterval(async () => {
+      pollCount++;
+      try {
+        const response = await fetch(`/api/whatsapp/sessions`, {
+          credentials: "include",
+        });
+        if (response.ok) {
+          const updatedSessions = await response.json();
+          const updatedSession = updatedSessions.find((s: WhatsappSession) => s.id === session.id);
+          
+          if (updatedSession?.qrCode) {
+            setSelectedSession(updatedSession);
+            clearInterval(interval);
+            setQrPollingInterval(null);
+          } else if (pollCount > 60) {
+            // Stop polling after 60 attempts (30 seconds)
+            clearInterval(interval);
+            setQrPollingInterval(null);
+            toast({
+              title: "QR Code Timeout",
+              description: "Could not generate QR code. Please try again.",
+              variant: "destructive",
+            });
+          } else {
+            setSelectedSession(updatedSession || session);
+          }
+        }
+      } catch (error) {
+        console.error("Error polling QR code:", error);
+      }
+    }, 500);
+    
+    setQrPollingInterval(interval);
+  };
 
   const createSessionMutation = useMutation({
     mutationFn: async () => {
@@ -27,6 +66,7 @@ export default function WhatsAppConnectionsPage() {
       setSelectedSession(session);
       setShowQRDialog(true);
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
+      startQRPolling(session);
     },
     onError: (error: any) => {
       toast({
@@ -152,6 +192,7 @@ export default function WhatsAppConnectionsPage() {
                       onClick={() => {
                         setSelectedSession(session);
                         setShowQRDialog(true);
+                        if (qrPollingInterval) clearInterval(qrPollingInterval);
                       }}
                       data-testid={`button-view-qr-${session.id}`}
                     >
@@ -231,7 +272,13 @@ export default function WhatsAppConnectionsPage() {
         </Card>
       )}
 
-      <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
+      <Dialog open={showQRDialog} onOpenChange={(open) => {
+        setShowQRDialog(open);
+        if (!open && qrPollingInterval) {
+          clearInterval(qrPollingInterval);
+          setQrPollingInterval(null);
+        }
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Scan QR Code</DialogTitle>
