@@ -129,10 +129,40 @@ class WhatsAppManager {
 
       const contactNumber = messageKey.remoteJid.split("@")[0];
       const contactName = msg.pushName || contactNumber;
-      const messageText =
-        messageContent.conversation ||
-        messageContent.extendedTextMessage?.text ||
-        "";
+      
+      // Extract message text from various Baileys message types
+      let messageText = "";
+      
+      if (messageContent.conversation) {
+        messageText = messageContent.conversation;
+      } else if (messageContent.extendedTextMessage?.text) {
+        messageText = messageContent.extendedTextMessage.text;
+      } else if (messageContent.imageMessage?.caption) {
+        messageText = messageContent.imageMessage.caption;
+      } else if (messageContent.videoMessage?.caption) {
+        messageText = messageContent.videoMessage.caption;
+      } else if (messageContent.documentMessage?.caption) {
+        messageText = messageContent.documentMessage.caption;
+      } else if (messageContent.audioMessage) {
+        messageText = "[Audio message]";
+      } else if (messageContent.imageMessage) {
+        messageText = "[Image]";
+      } else if (messageContent.videoMessage) {
+        messageText = "[Video]";
+      } else if (messageContent.documentMessage) {
+        messageText = `[Document: ${messageContent.documentMessage.fileName || "file"}]`;
+      } else if (messageContent.stickerMessage) {
+        messageText = "[Sticker]";
+      } else if (messageContent.contactMessage) {
+        messageText = `[Contact: ${messageContent.contactMessage.displayName}]`;
+      } else {
+        messageText = "[Unsupported message type]";
+      }
+
+      // Only save if we have meaningful content
+      if (!messageText || messageText.trim() === "") return;
+
+      console.log(`[MESSAGE] Session: ${sessionId}, Contact: ${contactNumber}, Text: ${messageText.substring(0, 50)}`);
 
       let conversation = (await storage.getConversationsBySessionId(sessionId)).find(
         (c) => c.contactNumber === contactNumber
