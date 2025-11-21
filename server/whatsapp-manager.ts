@@ -4,7 +4,6 @@ import makeWASocket, {
   WASocket,
   proto,
   WAMessage,
-  extractMessageContent,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
@@ -103,8 +102,10 @@ class WhatsAppManager {
       sock.ev.on("creds.update", saveCreds);
 
       sock.ev.on("messages.upsert", async (m) => {
+        console.log(`[MESSAGES-EVENT] Type: ${m.type}, Count: ${m.messages.length}`);
         if (m.type === "notify") {
           for (const msg of m.messages) {
+            console.log(`[MESSAGES-EVENT-DETAIL] Processing message from ${msg.key.remoteJid}, fromMe: ${msg.key.fromMe}`);
             await this.handleIncomingMessage(sessionId, userId, msg);
           }
         }
@@ -126,80 +127,68 @@ class WhatsAppManager {
       const messageKey = msg.key;
       const messageContent = msg.message;
 
+      console.log("[MESSAGE-HANDLE] Received message:", {
+        remoteJid: messageKey.remoteJid,
+        fromMe: messageKey.fromMe,
+        hasContent: !!messageContent,
+        contentKeys: messageContent ? Object.keys(messageContent) : []
+      });
+
       if (!messageKey.remoteJid || !messageContent) {
-        console.log("[MESSAGE-DEBUG] Skipping - no remoteJid or content");
+        console.log("[MESSAGE-SKIP] No remoteJid or content");
         return;
       }
 
       // Skip messages sent by me
       if (messageKey.fromMe) {
-        console.log("[MESSAGE-DEBUG] Skipping - message from me");
+        console.log("[MESSAGE-SKIP] Message from me (fromMe=true)");
         return;
       }
 
       const contactNumber = messageKey.remoteJid.split("@")[0];
       const contactName = msg.pushName || contactNumber;
       
-      // Extract message text using Baileys' extraction function
       let messageText = "";
       
-      try {
-        // Use Baileys' built-in extraction function
-        const extractedContent = extractMessageContent(messageContent);
-        if (extractedContent) {
-          messageText = extractedContent.text || "";
-        }
-        
-        // Fallback methods if extraction fails
-        if (!messageText) {
-          // Method 1: Direct conversation text
-          if (messageContent.conversation) {
-            messageText = messageContent.conversation;
-          } 
-          // Method 2: Extended text message
-          else if (messageContent.extendedTextMessage) {
-            messageText = messageContent.extendedTextMessage.text || "";
-          }
-          // Method 3: Image/Video/Audio caption
-          else if ((messageContent.imageMessage?.caption)) {
-            messageText = messageContent.imageMessage.caption;
-          }
-          else if ((messageContent.videoMessage?.caption)) {
-            messageText = messageContent.videoMessage.caption;
-          }
-          else if ((messageContent.documentMessage?.caption)) {
-            messageText = messageContent.documentMessage.caption;
-          }
-          // Media without captions
-          else if (messageContent.audioMessage) {
-            messageText = "[Audio message]";
-          } 
-          else if (messageContent.imageMessage) {
-            messageText = "[Image]";
-          } 
-          else if (messageContent.videoMessage) {
-            messageText = "[Video]";
-          } 
-          else if (messageContent.documentMessage) {
-            messageText = `[Document: ${messageContent.documentMessage.fileName || "file"}]`;
-          } 
-          else if (messageContent.stickerMessage) {
-            messageText = "[Sticker]";
-          } 
-          else if (messageContent.contactMessage) {
-            messageText = `[Contact: ${(messageContent.contactMessage as any).displayName}]`;
-          }
-          else {
-            messageText = "[Message]";
-          }
-        }
-      } catch (e) {
-        console.error("[MESSAGE-ERROR] Failed to extract message text:", e);
-        // Emergency fallback: still save something
+      // Extract text - simple and robust
+      if (messageContent.conversation) {
+        messageText = messageContent.conversation;
+      } 
+      else if (messageContent.extendedTextMessage?.text) {
+        messageText = messageContent.extendedTextMessage.text;
+      }
+      else if (messageContent.imageMessage?.caption) {
+        messageText = `[Image] ${messageContent.imageMessage.caption || ""}`;
+      }
+      else if (messageContent.videoMessage?.caption) {
+        messageText = `[Video] ${messageContent.videoMessage.caption || ""}`;
+      }
+      else if (messageContent.documentMessage?.caption) {
+        messageText = `[Document: ${messageContent.documentMessage.fileName}] ${messageContent.documentMessage.caption || ""}`;
+      }
+      else if (messageContent.audioMessage) {
+        messageText = "[Audio Message]";
+      } 
+      else if (messageContent.imageMessage) {
+        messageText = "[Image]";
+      } 
+      else if (messageContent.videoMessage) {
+        messageText = "[Video]";
+      } 
+      else if (messageContent.documentMessage) {
+        messageText = `[Document: ${messageContent.documentMessage.fileName}]`;
+      } 
+      else if (messageContent.stickerMessage) {
+        messageText = "[Sticker]";
+      } 
+      else if (messageContent.contactMessage) {
+        messageText = `[Contact: ${(messageContent.contactMessage as any).displayName}]`;
+      }
+      else {
         messageText = "[Message]";
       }
 
-      // Ensure we always have text content
+      // Never save empty
       if (!messageText || messageText.trim() === "") {
         messageText = "[Message]";
       }
