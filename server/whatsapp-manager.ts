@@ -42,7 +42,15 @@ class WhatsAppManager {
         auth: state,
         printQRInTerminal: false,
         browser: ["Ubuntu", "Chrome", "121.0"],
-        syncFullHistory: false,
+        syncFullHistory: true,
+        markOnlineOnConnect: true,
+        getMessage: async (key) => {
+          try {
+            return await sock.loadMessage(key);
+          } catch (e) {
+            return undefined;
+          }
+        },
       });
 
       console.log("[SOCKET] Socket created for session:", sessionId);
@@ -87,7 +95,7 @@ class WhatsAppManager {
           }
         } else if (connection === "open") {
           const phoneNumber = sock.user?.id?.split(":")[0] || "unknown";
-          console.log("[QR] Connected with phone:", phoneNumber);
+          console.log("[QR] ✅ CONNECTED with phone:", phoneNumber);
           await storage.updateWhatsappSession(sessionId, {
             phoneNumber,
             status: "connected",
@@ -104,21 +112,23 @@ class WhatsAppManager {
 
       sock.ev.on("creds.update", saveCreds);
 
-      // Listen to all message events
+      // PRIMARY: Listen to messages.upsert for REAL-TIME messages
       sock.ev.on("messages.upsert", async (m) => {
-        console.log(`[MESSAGES-EVENT] Type: ${m.type}, Count: ${m.messages.length}`);
-        if (m.type === "notify") {
-          for (const msg of m.messages) {
-            console.log(`[MESSAGES-EVENT-DETAIL] Processing message from ${msg.key.remoteJid}, fromMe: ${msg.key.fromMe}`);
-            await this.handleIncomingMessage(sessionId, userId, msg);
-          }
+        console.log(`[MESSAGES-UPSERT] Type: ${m.type}, Count: ${m.messages.length}`);
+        for (const msg of m.messages) {
+          console.log(`[MESSAGE-RECEIVED] From: ${msg.key.remoteJid}, FromMe: ${msg.key.fromMe}, HasContent: ${!!msg.message}`);
+          await this.handleIncomingMessage(sessionId, userId, msg);
         }
       });
 
-      // Also listen to message.new (for newly synced messages)
-      sock.ev.on("message.new", async (msg) => {
-        console.log(`[MESSAGE-NEW-EVENT] From ${msg.key.remoteJid}`);
-        await this.handleIncomingMessage(sessionId, userId, msg);
+      // FALLBACK: Also listen to messages.update
+      sock.ev.on("messages.update", async (m) => {
+        console.log(`[MESSAGES-UPDATE] Updates: ${m.length}`);
+        for (const update of m) {
+          if (update.key && update.update) {
+            console.log(`[MESSAGE-UPDATE] Message ${update.key.id} updated`);
+          }
+        }
       });
 
       this.connections.set(sessionId, {
