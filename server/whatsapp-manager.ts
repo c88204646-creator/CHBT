@@ -259,16 +259,17 @@ class WhatsAppManager {
         }
       }
 
-      // Always create message with content
+      // Always create message with content - preserve fromMe flag!
       try {
+        const isFromMe = messageKey.fromMe === true;
         await storage.createMessage({
           conversationId: conversation.id,
           content: messageText,
-          fromMe: false,
-          timestamp: new Date(),
-          status: "delivered",
+          fromMe: isFromMe,
+          timestamp: new Date(messageKey.timestamp ? messageKey.timestamp * 1000 : Date.now()),
+          status: isFromMe ? "sent" : "delivered",
         });
-        console.log(`[MESSAGE] Message saved with content: ${messageText.substring(0, 50)}`);
+        console.log(`[MESSAGE] Message saved (${isFromMe ? "SENT" : "RECEIVED"}): ${messageText.substring(0, 50)}`);
       } catch (e) {
         console.error("[MESSAGE] Error saving message:", e);
       }
