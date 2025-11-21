@@ -33,6 +33,7 @@ export default function ConversationsPage() {
   const { data: conversations, isLoading: conversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations", selectedSession],
     enabled: !!selectedSession,
+    refetchInterval: 2000, // Refresh every 2 seconds
     queryFn: async () => {
       const response = await fetch(`/api/conversations?sessionId=${selectedSession}`, {
         credentials: "include",
@@ -45,6 +46,7 @@ export default function ConversationsPage() {
   const { data: messages, isLoading: messagesLoading } = useQuery<Message[]>({
     queryKey: ["/api/conversations", selectedConversation, "messages"],
     enabled: !!selectedConversation,
+    refetchInterval: 2000, // Refresh every 2 seconds
   });
 
   const sendMessageMutation = useMutation({
