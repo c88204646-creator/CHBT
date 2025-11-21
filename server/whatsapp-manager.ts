@@ -14,6 +14,7 @@ import path from "path";
 interface WhatsAppConnection {
   sock: WASocket | null;
   qrCode: string | null;
+  pairingCode: string | null;
   status: "connecting" | "connected" | "disconnected";
   sessionId: string;
 }
@@ -47,6 +48,8 @@ class WhatsAppManager {
         keepAliveIntervalMs: 30000,
         defaultQueryTimeoutMs: 0,
         shouldIgnoreJid: (jid) => false,
+        // Try pairing code first for Business accounts
+        qrTimeout: 60000,
       });
 
       console.log("[SOCKET] Socket created for session:", sessionId);
@@ -71,6 +74,22 @@ class WhatsAppManager {
             }
           } catch (error) {
             console.error("[QR] Error generating QR code:", error);
+          }
+        }
+
+        // Handle pairing code for Business accounts
+        if (update.code) {
+          const pairingCode = update.code;
+          console.log("[PAIRING] Generated pairing code:", pairingCode);
+          await storage.updateWhatsappSession(sessionId, {
+            qrCode: pairingCode, // Store code in qrCode field temporarily
+            status: "connecting",
+          });
+          
+          const conn = this.connections.get(sessionId);
+          if (conn) {
+            conn.pairingCode = pairingCode;
+            conn.status = "connecting";
           }
         }
 
@@ -143,6 +162,7 @@ class WhatsAppManager {
       this.connections.set(sessionId, {
         sock,
         qrCode: null,
+        pairingCode: null,
         status: "connecting",
         sessionId,
       });
