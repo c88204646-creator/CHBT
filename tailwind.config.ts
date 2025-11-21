@@ -81,6 +81,11 @@ export default {
           busy: "rgb(239 68 68)",
           offline: "rgb(156 163 175)",
         },
+        whatsapp: {
+          DEFAULT: "hsl(142 80% 48%)",
+          dark: "hsl(142 71% 45%)",
+          light: "hsl(142 80% 55%)",
+        },
       },
       fontFamily: {
         sans: ["var(--font-sans)"],

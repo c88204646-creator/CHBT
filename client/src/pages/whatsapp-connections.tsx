@@ -1,0 +1,233 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Smartphone, Plus, QrCode, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import type { WhatsappSession } from "@shared/schema";
+
+export default function WhatsAppConnectionsPage() {
+  const { toast } = useToast();
+  const [showQRDialog, setShowQRDialog] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<WhatsappSession | null>(null);
+
+  const { data: sessions, isLoading } = useQuery<WhatsappSession[]>({
+    queryKey: ["/api/whatsapp/sessions"],
+  });
+
+  const createSessionMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/whatsapp/sessions", {});
+    },
+    onSuccess: (session: WhatsappSession) => {
+      setSelectedSession(session);
+      setShowQRDialog(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create WhatsApp session",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      return await apiRequest("DELETE", `/api/whatsapp/sessions/${sessionId}`, {});
+    },
+    onSuccess: () => {
+      toast({
+        title: "Disconnected",
+        description: "WhatsApp session has been disconnected",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/sessions"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to disconnect session",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "connected":
+        return (
+          <Badge className="bg-secondary text-secondary-foreground">
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            Connected
+          </Badge>
+        );
+      case "connecting":
+        return (
+          <Badge variant="outline" className="text-muted-foreground">
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            Connecting
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="outline" className="text-muted-foreground">
+            <XCircle className="w-3 h-3 mr-1" />
+            Disconnected
+          </Badge>
+        );
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold text-foreground">WhatsApp Connections</h1>
+          <p className="text-muted-foreground mt-2">
+            Manage your WhatsApp accounts and connections
+          </p>
+        </div>
+        <Button
+          onClick={() => createSessionMutation.mutate()}
+          disabled={createSessionMutation.isPending}
+          className="gap-2"
+          data-testid="button-create-session"
+        >
+          <Plus className="w-4 h-4" />
+          {createSessionMutation.isPending ? "Creating..." : "Connect Account"}
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-24 mt-2" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-10 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : sessions && sessions.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {sessions.map((session) => (
+            <Card key={session.id} className="hover-elevate" data-testid={`card-session-${session.id}`}>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-whatsapp/10 flex items-center justify-center">
+                      <Smartphone className="w-5 h-5 text-whatsapp" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">
+                        {session.phoneNumber || "Pending"}
+                      </CardTitle>
+                      <CardDescription className="text-xs mt-1">
+                        {getStatusBadge(session.status)}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>ID: {session.id.substring(0, 8)}...</p>
+                  <p>Created: {new Date(session.createdAt).toLocaleDateString()}</p>
+                </div>
+                <div className="flex gap-2">
+                  {session.status === "connecting" && session.qrCode && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        setSelectedSession(session);
+                        setShowQRDialog(true);
+                      }}
+                      data-testid={`button-view-qr-${session.id}`}
+                    >
+                      <QrCode className="w-4 h-4 mr-2" />
+                      View QR
+                    </Button>
+                  )}
+                  {session.status === "connected" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => disconnectMutation.mutate(session.id)}
+                      disabled={disconnectMutation.isPending}
+                      data-testid={`button-disconnect-${session.id}`}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card className="text-center py-12">
+          <CardContent>
+            <div className="w-16 h-16 mx-auto rounded-full bg-muted flex items-center justify-center mb-4">
+              <Smartphone className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-medium text-foreground mb-2">No WhatsApp Connections</h3>
+            <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
+              Connect your first WhatsApp account to start managing conversations and chatbots
+            </p>
+            <Button
+              onClick={() => createSessionMutation.mutate()}
+              disabled={createSessionMutation.isPending}
+              className="gap-2"
+              data-testid="button-create-first-session"
+            >
+              <Plus className="w-4 h-4" />
+              Connect Your First Account
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Scan QR Code</DialogTitle>
+            <DialogDescription>
+              Open WhatsApp on your phone and scan this QR code to connect
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center py-6">
+            {selectedSession?.qrCode ? (
+              <div className="bg-white p-6 rounded-lg">
+                <img
+                  src={selectedSession.qrCode}
+                  alt="QR Code"
+                  className="w-64 h-64"
+                  data-testid="img-qr-code"
+                />
+              </div>
+            ) : (
+              <div className="w-64 h-64 flex items-center justify-center bg-muted rounded-lg">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground mt-4 text-center">
+              QR code will refresh automatically if not scanned
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
