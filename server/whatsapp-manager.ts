@@ -125,12 +125,6 @@ class WhatsAppManager {
       const messageKey = msg.key;
       const messageContent = msg.message;
 
-      console.log("[MESSAGE-DEBUG] Incoming message key:", { 
-        remoteJid: messageKey.remoteJid,
-        fromMe: messageKey.fromMe,
-        hasContent: !!messageContent
-      });
-
       if (!messageKey.remoteJid || !messageContent) {
         console.log("[MESSAGE-DEBUG] Skipping - no remoteJid or content");
         return;
@@ -145,39 +139,70 @@ class WhatsAppManager {
       const contactNumber = messageKey.remoteJid.split("@")[0];
       const contactName = msg.pushName || contactNumber;
       
-      // Extract message text from various Baileys message types
+      // Extract message text - try multiple ways
       let messageText = "";
       
-      if (messageContent.conversation) {
-        messageText = messageContent.conversation;
-      } else if (messageContent.extendedTextMessage?.text) {
-        messageText = messageContent.extendedTextMessage.text;
-      } else if (messageContent.imageMessage?.caption) {
-        messageText = messageContent.imageMessage.caption;
-      } else if (messageContent.videoMessage?.caption) {
-        messageText = messageContent.videoMessage.caption;
-      } else if (messageContent.documentMessage?.caption) {
-        messageText = messageContent.documentMessage.caption;
-      } else if (messageContent.audioMessage) {
-        messageText = "[Audio message]";
-      } else if (messageContent.imageMessage) {
-        messageText = "[Image]";
-      } else if (messageContent.videoMessage) {
-        messageText = "[Video]";
-      } else if (messageContent.documentMessage) {
-        messageText = `[Document: ${messageContent.documentMessage.fileName || "file"}]`;
-      } else if (messageContent.stickerMessage) {
-        messageText = "[Sticker]";
-      } else if (messageContent.contactMessage) {
-        messageText = `[Contact: ${messageContent.contactMessage.displayName}]`;
-      } else {
-        messageText = "[Unsupported message type]";
+      try {
+        // Method 1: Direct conversation text
+        if (messageContent.conversation) {
+          messageText = messageContent.conversation;
+        } 
+        // Method 2: Extended text message
+        else if (messageContent.extendedTextMessage) {
+          messageText = messageContent.extendedTextMessage.text || "";
+        }
+        // Method 3: Text message (older format)
+        else if ((messageContent as any).textMessage?.text) {
+          messageText = (messageContent as any).textMessage.text;
+        }
+        // Method 4: Quote message with text
+        else if ((messageContent as any).quotedMessage?.conversation) {
+          messageText = (messageContent as any).quotedMessage.conversation;
+        }
+        // Media with captions
+        else if (messageContent.imageMessage?.caption) {
+          messageText = messageContent.imageMessage.caption;
+        } 
+        else if (messageContent.videoMessage?.caption) {
+          messageText = messageContent.videoMessage.caption;
+        } 
+        else if (messageContent.documentMessage?.caption) {
+          messageText = messageContent.documentMessage.caption;
+        }
+        // Media without captions
+        else if (messageContent.audioMessage) {
+          messageText = "[Audio message]";
+        } 
+        else if (messageContent.imageMessage) {
+          messageText = "[Image]";
+        } 
+        else if (messageContent.videoMessage) {
+          messageText = "[Video]";
+        } 
+        else if (messageContent.documentMessage) {
+          messageText = `[Document: ${messageContent.documentMessage.fileName || "file"}]`;
+        } 
+        else if (messageContent.stickerMessage) {
+          messageText = "[Sticker]";
+        } 
+        else if (messageContent.contactMessage) {
+          messageText = `[Contact: ${messageContent.contactMessage.displayName}]`;
+        }
+        // Fallback: try to extract any text from the whole object
+        else {
+          const allText = JSON.stringify(messageContent);
+          if (allText.length > 100 && allText.length < 5000) {
+            messageText = "[Message type not recognized]";
+          }
+        }
+      } catch (e) {
+        console.error("[MESSAGE-ERROR] Failed to extract message text:", e);
+        messageText = "[Error extracting message]";
       }
 
-      // Only save if we have meaningful content
+      // Save message even if text couldn't be extracted perfectly
       if (!messageText || messageText.trim() === "") {
-        console.log("[MESSAGE-DEBUG] Skipping - empty message text");
-        return;
+        messageText = "[Empty message]";
       }
 
       console.log(`[MESSAGE] ✓ RECEIVED Session: ${sessionId}, Contact: ${contactNumber}, Text: ${messageText.substring(0, 100)}`);
