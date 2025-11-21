@@ -108,9 +108,11 @@ class WhatsAppManager {
 
       sock.ev.on("creds.update", saveCreds);
 
+      console.log("[LISTENERS] Registering message event listeners for session:", sessionId);
+
       // PRIMARY: Listen to messages.upsert for REAL-TIME messages
       sock.ev.on("messages.upsert", async (m) => {
-        console.log(`[MESSAGES-UPSERT] Type: ${m.type}, Count: ${m.messages.length}`);
+        console.log(`[MESSAGES-UPSERT] ✅ Type: ${m.type}, Count: ${m.messages.length}`);
         for (const msg of m.messages) {
           console.log(`[MESSAGE-RECEIVED] From: ${msg.key.remoteJid}, FromMe: ${msg.key.fromMe}, HasContent: ${!!msg.message}`);
           await this.handleIncomingMessage(sessionId, userId, msg);
@@ -119,11 +121,13 @@ class WhatsAppManager {
 
       // FALLBACK: Also listen to messages.update
       sock.ev.on("messages.update", async (m) => {
-        console.log(`[MESSAGES-UPDATE] Updates: ${m.length}`);
-        for (const update of m) {
-          if (update.key && update.update) {
-            console.log(`[MESSAGE-UPDATE] Message ${update.key.id} updated`);
-          }
+        console.log(`[MESSAGES-UPDATE] Updates count: ${m.length}`);
+      });
+      
+      // Additional listener for other events
+      sock.ev.on("all", (event, ...args) => {
+        if (event.includes("message") || event.includes("chats")) {
+          console.log(`[EVENT] ${event}`, args.length > 0 ? `args: ${args.length}` : "");
         }
       });
 
